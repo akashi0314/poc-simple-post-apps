@@ -10,7 +10,8 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "outDir": "./",
-    "rootDir": "./"
+    "rootDir": "./",
+    "removeComments": true
   },
   "include": ["app.ts"],
   "exclude": ["node_modules", "**/*.test.ts"]

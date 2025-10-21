@@ -1,70 +1,37 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { lambdaHandler } from '../../app';
-import { expect, describe, it } from '@jest/globals';
 import { mockClient } from 'aws-sdk-client-mock';
 import { DynamoDBDocumentClient, PutCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
+import { lambdaHandler } from '../../app';
 
 const ddbMock = mockClient(DynamoDBDocumentClient);
 
-describe('Unit test for app handler', function () {
+describe('Unit test for app handler', () => {
+    beforeEach(() => {
+        ddbMock.reset();
+    });
+
     it('verifies successful response', async () => {
+        const mockItem = { id: 'test-id', name: 'Test Item', description: 'Test Description' };
+        ddbMock.on(GetCommand).resolves({ Item: mockItem });
+
         const event: APIGatewayProxyEvent = {
-            httpMethod: 'get',
-            body: '',
+            httpMethod: 'GET',
+            path: '/items/test-id',
+            pathParameters: { id: 'test-id' },
+            body: null,
             headers: {},
-            isBase64Encoded: false,
             multiValueHeaders: {},
-            multiValueQueryStringParameters: {},
-            path: '/hello',
-            pathParameters: {},
-            queryStringParameters: {},
-            requestContext: {
-                accountId: '123456789012',
-                apiId: '1234',
-                authorizer: {},
-                httpMethod: 'get',
-                identity: {
-                    accessKey: '',
-                    accountId: '',
-                    apiKey: '',
-                    apiKeyId: '',
-                    caller: '',
-                    clientCert: {
-                        clientCertPem: '',
-                        issuerDN: '',
-                        serialNumber: '',
-                        subjectDN: '',
-                        validity: { notAfter: '', notBefore: '' },
-                    },
-                    cognitoAuthenticationProvider: '',
-                    cognitoAuthenticationType: '',
-                    cognitoIdentityId: '',
-                    cognitoIdentityPoolId: '',
-                    principalOrgId: '',
-                    sourceIp: '',
-                    user: '',
-                    userAgent: '',
-                    userArn: '',
-                },
-                path: '/hello',
-                protocol: 'HTTP/1.1',
-                requestId: 'c6af9ac6-7b61-11e6-9a41-93e8deadbeef',
-                requestTimeEpoch: 1428582896000,
-                resourceId: '123456',
-                resourcePath: '/hello',
-                stage: 'dev',
-            },
+            isBase64Encoded: false,
+            queryStringParameters: null,
+            multiValueQueryStringParameters: null,
+            requestContext: {} as any,
             resource: '',
             stageVariables: {},
         };
         const result: APIGatewayProxyResult = await lambdaHandler(event);
 
         expect(result.statusCode).toEqual(200);
-        expect(result.body).toEqual(
-            JSON.stringify({
-                message: 'hello world',
-            }),
-        );
+        expect(result.body).toEqual(JSON.stringify(mockItem));
     });
 });
 
@@ -78,34 +45,53 @@ describe('Items API Tests', () => {
 
         const event: APIGatewayProxyEvent = {
             httpMethod: 'POST',
-            body: JSON.stringify({ name: 'test', price: 100 }),
-        } as any;
+            path: '/items',
+            body: JSON.stringify({ name: 'New Item', description: 'New Description' }),
+            headers: {},
+            multiValueHeaders: {},
+            isBase64Encoded: false,
+            pathParameters: null,
+            queryStringParameters: null,
+            multiValueQueryStringParameters: null,
+            requestContext: {} as any,
+            resource: '',
+            stageVariables: {},
+        };
 
-        const result = await lambdaHandler(event);
+        const result: APIGatewayProxyResult = await lambdaHandler(event);
 
         expect(result.statusCode).toEqual(201);
         const body = JSON.parse(result.body);
-        expect(body.name).toEqual('test');
+        expect(body.name).toEqual('New Item');
+        expect(body.description).toEqual('New Description');
         expect(body.id).toBeDefined();
         expect(body.createdAt).toBeDefined();
     });
 
     it('should get item via GET', async () => {
-        ddbMock.on(GetCommand).resolves({
-            Item: { id: '123', name: 'test', price: 100 },
-        });
+        const mockItem = { id: 'test-id', name: 'Test Item', description: 'Test Description' };
+        ddbMock.on(GetCommand).resolves({ Item: mockItem });
 
         const event: APIGatewayProxyEvent = {
             httpMethod: 'GET',
-            pathParameters: { id: '123' },
-        } as any;
+            path: '/items/test-id',
+            pathParameters: { id: 'test-id' },
+            body: null,
+            headers: {},
+            multiValueHeaders: {},
+            isBase64Encoded: false,
+            queryStringParameters: null,
+            multiValueQueryStringParameters: null,
+            requestContext: {} as any,
+            resource: '',
+            stageVariables: {},
+        };
 
-        const result = await lambdaHandler(event);
+        const result: APIGatewayProxyResult = await lambdaHandler(event);
 
         expect(result.statusCode).toEqual(200);
         const body = JSON.parse(result.body);
-        expect(body.id).toEqual('123');
-        expect(body.name).toEqual('test');
+        expect(body).toEqual(mockItem);
     });
 
     it('should return 404 for missing item', async () => {
@@ -113,10 +99,20 @@ describe('Items API Tests', () => {
 
         const event: APIGatewayProxyEvent = {
             httpMethod: 'GET',
-            pathParameters: { id: 'nonexistent' },
-        } as any;
+            path: '/items/missing-id',
+            pathParameters: { id: 'missing-id' },
+            body: null,
+            headers: {},
+            multiValueHeaders: {},
+            isBase64Encoded: false,
+            queryStringParameters: null,
+            multiValueQueryStringParameters: null,
+            requestContext: {} as any,
+            resource: '',
+            stageVariables: {},
+        };
 
-        const result = await lambdaHandler(event);
+        const result: APIGatewayProxyResult = await lambdaHandler(event);
 
         expect(result.statusCode).toEqual(404);
     });

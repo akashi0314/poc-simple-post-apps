@@ -1,5 +1,5 @@
 /**
- * 最もシンプルなPOST/GET API実装（教育用）
+ * 最もシンプルなPOST/GET API実装(教育用)
  * 
  * === このコードで学べること ===
  * 1. AWS Lambda の基本構造とイベント駆動アーキテクチャ
@@ -84,28 +84,36 @@ const dynamodb = DynamoDBDocumentClient.from(client);
 export const lambdaHandler = async (
     event: APIGatewayProxyEvent
 ): Promise<APIGatewayProxyResult> => {
+    console.log('[START] Lambda Handler');
+    console.log('[REQUEST] Method:', event.httpMethod);
+    console.log('[REQUEST] Path:', event.path);
+    console.log('[REQUEST] Body:', event.body);
+
     try {
         // HTTPメソッドを取得
         const method = event.httpMethod;
 
         // POST /items - アイテムを作成
         if (method === 'POST') {
+            console.log('[ROUTE] POST /items - Create Item');
             return await createItem(event);
         }
 
         // GET /items/{id} - アイテムを取得
         if (method === 'GET') {
+            console.log('[ROUTE] GET /items/{id} - Get Item');
             return await getItem(event);
         }
 
         // 上記以外のメソッドはサポートしない
+        console.log('[ERROR] Method not allowed:', method);
         return createErrorResponse(
             HTTP_STATUS.METHOD_NOT_ALLOWED,
             'Method not allowed'
         );
     } catch (err) {
         // 予期しないエラーが発生した場合
-        console.error('Unexpected error:', err);
+        console.error('[ERROR] Unexpected error:', err);
         return createErrorResponse(
             HTTP_STATUS.INTERNAL_SERVER_ERROR,
             'Internal server error'
@@ -140,17 +148,22 @@ export const lambdaHandler = async (
  * - 適切なHTTPステータスコードの返却
  */
 async function createItem(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+    console.log('[CREATE] Starting create item process');
+
     try {
         // ========================================
         // バリデーション
         // ========================================
+        console.log('[VALIDATE] Validating request body');
         const validation = validateRequestBody(event.body);
         if (!validation.isValid) {
+            console.log('[VALIDATE] Validation failed:', validation.error);
             return createErrorResponse(
                 HTTP_STATUS.BAD_REQUEST,
                 validation.error!
             );
         }
+        console.log('[VALIDATE] Validation passed');
 
         const body = validation.data!;
 
@@ -167,7 +180,9 @@ async function createItem(event: APIGatewayProxyEvent): Promise<APIGatewayProxyR
          */
         if (body.id !== undefined) {
             // IDが指定されている場合はバリデーション
+            console.log('[ID] User provided ID:', body.id);
             if (typeof body.id !== 'string' || body.id.trim() === '') {
+                console.log('[ID] Invalid ID format');
                 return createErrorResponse(
                     HTTP_STATUS.BAD_REQUEST,
                     'ID must be a non-empty string'
@@ -176,6 +191,7 @@ async function createItem(event: APIGatewayProxyEvent): Promise<APIGatewayProxyR
         } else {
             // IDが指定されていない場合は自動生成
             body.id = randomUUID();
+            console.log('[ID] Generated UUID:', body.id);
         }
 
         // ========================================
@@ -189,6 +205,7 @@ async function createItem(event: APIGatewayProxyEvent): Promise<APIGatewayProxyR
          * - サーバー側でタイムスタンプを管理する重要性
          */
         body.createdAt = new Date().toISOString();
+        console.log('[TIMESTAMP] Created at:', body.createdAt);
 
         // ========================================
         // DynamoDBに保存
@@ -199,8 +216,11 @@ async function createItem(event: APIGatewayProxyEvent): Promise<APIGatewayProxyR
          * 学習ポイント：
          * - AWS SDK v3 のコマンドパターン
          * - async/await での非同期処理
-         * - 同じIDがある場合は上書きされる（Putの特性）
+         * - 同じIDがある場合は上書きされる(Putの特性)
          */
+        console.log('[DYNAMODB] Saving to table:', CONFIG.TABLE_NAME);
+        console.log('[DYNAMODB] Item data:', JSON.stringify(body));
+        
         await dynamodb.send(
             new PutCommand({
                 TableName: CONFIG.TABLE_NAME,
@@ -208,14 +228,18 @@ async function createItem(event: APIGatewayProxyEvent): Promise<APIGatewayProxyR
             })
         );
 
-        // 作成したアイテムを返す（201 Created）
+        console.log('[DYNAMODB] Item saved successfully');
+        console.log('[SUCCESS] Item created with ID:', body.id);
+
+        // 作成したアイテムを返す(201 Created)
         return createSuccessResponse(HTTP_STATUS.CREATED, body);
     } catch (err) {
         // DynamoDB関連のエラー
-        console.error('Error creating item:', err);
+        console.error('[ERROR] Error creating item:', err);
 
         // DynamoDBのエラーを適切に処理
         if (isDynamoDBError(err)) {
+            console.error('[ERROR] DynamoDB service error');
             return createErrorResponse(
                 HTTP_STATUS.SERVICE_UNAVAILABLE,
                 'Database service unavailable'
@@ -251,6 +275,8 @@ async function createItem(event: APIGatewayProxyEvent): Promise<APIGatewayProxyR
  * - 404エラーの適切な処理
  */
 async function getItem(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+    console.log('[GET] Starting get item process');
+
     try {
         // ========================================
         // パスパラメータの検証
@@ -259,10 +285,11 @@ async function getItem(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResu
          * パスパラメータの存在確認
          * 
          * 学習ポイント：
-         * - 早期リターンパターン（ガード節）
+         * - 早期リターンパターン(ガード節)
          * - null/undefined チェックの重要性
          */
         if (!event.pathParameters) {
+            console.log('[ERROR] Path parameters missing');
             return createErrorResponse(
                 HTTP_STATUS.BAD_REQUEST,
                 'Path parameters are required'
@@ -271,17 +298,20 @@ async function getItem(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResu
 
         // パスパラメータからIDを取得
         const itemId = event.pathParameters.id;
+        console.log('[GET] Requested item ID:', itemId);
 
         // IDのバリデーション
         if (!itemId || itemId.trim() === '') {
+            console.log('[ERROR] ID parameter is empty');
             return createErrorResponse(
                 HTTP_STATUS.BAD_REQUEST,
                 'ID parameter is required'
             );
         }
 
-        // IDの形式チェック（基本的なサニタイゼーション）
+        // IDの形式チェック(基本的なサニタイゼーション)
         if (itemId.length > CONFIG.MAX_ID_LENGTH) {
+            console.log('[ERROR] ID parameter too long:', itemId.length);
             return createErrorResponse(
                 HTTP_STATUS.BAD_REQUEST,
                 'ID parameter is too long'
@@ -298,6 +328,7 @@ async function getItem(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResu
          * - プライマリキーを指定したGet操作
          * - 取得結果が存在しない場合の処理
          */
+        console.log('[DYNAMODB] Getting item from table:', CONFIG.TABLE_NAME);
         const response = await dynamodb.send(
             new GetCommand({
                 TableName: CONFIG.TABLE_NAME,
@@ -307,20 +338,24 @@ async function getItem(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResu
 
         // アイテムが見つからない場合は404エラー
         if (!response.Item) {
+            console.log('[NOT_FOUND] Item not found for ID:', itemId);
             return createErrorResponse(
                 HTTP_STATUS.NOT_FOUND,
                 'Item not found'
             );
         }
 
-        // 取得したアイテムを返す（200 OK）
+        console.log('[SUCCESS] Item retrieved:', JSON.stringify(response.Item));
+
+        // 取得したアイテムを返す(200 OK)
         return createSuccessResponse(HTTP_STATUS.OK, response.Item);
     } catch (err) {
         // DynamoDB関連のエラー
-        console.error('Error getting item:', err);
+        console.error('[ERROR] Error getting item:', err);
 
         // DynamoDBのエラーを適切に処理
         if (isDynamoDBError(err)) {
+            console.error('[ERROR] DynamoDB service error');
             return createErrorResponse(
                 HTTP_STATUS.SERVICE_UNAVAILABLE,
                 'Database service unavailable'
@@ -360,6 +395,7 @@ function validateRequestBody(body: string | null): {
     try {
         parsedBody = JSON.parse(body);
     } catch (parseError) {
+        console.log('[VALIDATE] JSON parse error:', parseError);
         return { isValid: false, error: 'Invalid JSON format' };
     }
 
@@ -387,6 +423,7 @@ function validateRequestBody(body: string | null): {
  * @returns API Gatewayレスポンスオブジェクト
  */
 function createSuccessResponse(statusCode: number, data: any): APIGatewayProxyResult {
+    console.log('[RESPONSE] Success response:', statusCode);
     return {
         statusCode,
         headers: {
@@ -401,7 +438,7 @@ function createSuccessResponse(statusCode: number, data: any): APIGatewayProxyRe
  * 
  * 学習ポイント：
  * - 一貫性のあるエラーレスポンス形式
- * - タイムスタンプの付与（デバッグ用）
+ * - タイムスタンプの付与(デバッグ用)
  * - 適切なHTTPステータスコードの使用
  * 
  * @param statusCode - HTTPステータスコード
@@ -409,6 +446,7 @@ function createSuccessResponse(statusCode: number, data: any): APIGatewayProxyRe
  * @returns API Gatewayレスポンスオブジェクト
  */
 function createErrorResponse(statusCode: number, message: string): APIGatewayProxyResult {
+    console.log('[RESPONSE] Error response:', statusCode, message);
     return {
         statusCode,
         headers: {
